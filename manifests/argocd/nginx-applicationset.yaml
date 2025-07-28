@@ -9,7 +9,7 @@ spec:
         elements:
           - name: nginx-ns1
             namespace: ns1
-            replicaCount: "3"
+            replicaCount: 3
             chartVersion: nginx-0.1.0
         # Elements will be populated by the GitHub workflow
         # Example element structure:
@@ -29,9 +29,9 @@ spec:
         helm:
           parameters:
             - name: replicaCount
-              value: "{{replicaCount}}"
+              value: {{replicaCount}}
       destination:
-        name: test
+        server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
       syncPolicy:
         automated:
