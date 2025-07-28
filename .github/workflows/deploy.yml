@@ -1,0 +1,206 @@
+name: Update ArgoCD Configuration for Nginx Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - delete
+          - update
+      namespace:
+        description: 'Kubernetes namespace to deploy to'
+        required: true
+      replicaCount:
+        description: 'Number of replicas'
+        required: false
+        default: '1'
+      chartVersion:
+        description: 'Helm chart version to use'
+        required: true
+        default: 'nginx-0.1.0'
+        type: choice
+        options:
+          - nginx-0.1.0
+          - nginx-0.2.0
+
+jobs:
+  update-argocd-config:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Add or update deployment in ApplicationSet
+        if: ${{ github.event.inputs.action == 'deploy' }}
+        run: |
+          # Use the chart name (nginx) with namespace as the identifier
+          APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          
+          # Check if the deployment already exists in the ApplicationSet
+          DEPLOYMENT_EXISTS=$(yq e '.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'")' manifests/argocd/nginx-applicationset.yaml)
+          
+          if [ -z "$DEPLOYMENT_EXISTS" ]; then
+            # Add new deployment to the ApplicationSet
+            yq -i '.spec.generators[0].list.elements += [{"name": "'"$APP_NAME"'", "namespace": "${{ github.event.inputs.namespace }}", "replicaCount": "${{ github.event.inputs.replicaCount }}", "chartVersion": "${{ github.event.inputs.chartVersion }}"}]' manifests/argocd/nginx-applicationset.yaml
+            echo "Added new deployment to ApplicationSet"
+          else
+            # Update existing deployment in the ApplicationSet
+            yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").namespace = "${{ github.event.inputs.namespace }}" | select(.name == "'"$APP_NAME"'").replicaCount = "${{ github.event.inputs.replicaCount }}" | select(.name == "'"$APP_NAME"'").chartVersion = "${{ github.event.inputs.chartVersion }}"' manifests/argocd/nginx-applicationset.yaml
+            echo "Updated existing deployment in ApplicationSet"
+          fi
+          
+          echo "Updated ApplicationSet manifest:"
+          cat manifests/argocd/nginx-applicationset.yaml
+
+      - name: Update deployment in ApplicationSet
+        if: ${{ github.event.inputs.action == 'update' }}
+        run: |
+          # Use the chart name (nginx) with namespace as the identifier
+          APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          
+          # Check if the deployment exists in the ApplicationSet
+          DEPLOYMENT_EXISTS=$(yq e '.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'")' manifests/argocd/nginx-applicationset.yaml)
+          
+          if [ -z "$DEPLOYMENT_EXISTS" ]; then
+            echo "Error: Deployment $APP_NAME does not exist in the ApplicationSet"
+            exit 1
+          else
+            # Update both replica count and chart version for the existing deployment
+            UPDATES=""
+            
+            # Only update replicaCount if it's provided
+            if [[ -n "${{ github.event.inputs.replicaCount }}" ]]; then
+              yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").replicaCount = "${{ github.event.inputs.replicaCount }}"' manifests/argocd/nginx-applicationset.yaml
+              echo "Updated replica count for $APP_NAME to ${{ github.event.inputs.replicaCount }}"
+              UPDATES="replica count"
+            fi
+            
+            # Only update chartVersion if it's provided
+            if [[ -n "${{ github.event.inputs.chartVersion }}" ]]; then
+              yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").chartVersion = "${{ github.event.inputs.chartVersion }}"' manifests/argocd/nginx-applicationset.yaml
+              echo "Updated chart version for $APP_NAME to ${{ github.event.inputs.chartVersion }}"
+              if [[ -n "$UPDATES" ]]; then
+                UPDATES="$UPDATES and chart version"
+              else
+                UPDATES="chart version"
+              fi
+            fi
+            
+            if [[ -z "$UPDATES" ]]; then
+              echo "No updates were provided. Please specify at least replicaCount or chartVersion."
+              exit 1
+            fi
+          fi
+          
+          echo "Updated ApplicationSet manifest:"
+          cat manifests/argocd/nginx-applicationset.yaml
+
+      - name: Remove deployment from ApplicationSet
+        if: ${{ github.event.inputs.action == 'delete' }}
+        run: |
+          # Use the chart name (nginx) with namespace as the identifier
+          APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          
+          # Remove the deployment from the ApplicationSet
+          yq -i 'del(.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'"))' manifests/argocd/nginx-applicationset.yaml
+          
+          echo "Updated ApplicationSet manifest for deletion:"
+          cat manifests/argocd/nginx-applicationset.yaml
+
+      - name: Create branch, commit and push changes
+        run: |
+          # Use the chart name (nginx) with namespace as the identifier
+          APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          
+          # Create a new branch with timestamp and action type
+          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          BRANCH_NAME="${{ github.event.inputs.action }}-$APP_NAME-$TIMESTAMP"
+          echo "Creating new branch: $BRANCH_NAME"
+          git checkout -b $BRANCH_NAME
+          
+          git add manifests/argocd/nginx-applicationset.yaml
+          
+          # Prepare commit message
+          if [[ "${{ github.event.inputs.action }}" == "deploy" ]]; then
+            COMMIT_MSG="Update ArgoCD ApplicationSet to deploy $APP_NAME to ${{ github.event.inputs.namespace }} namespace with ${{ github.event.inputs.replicaCount }} replicas using chart version ${{ github.event.inputs.chartVersion }}"
+          elif [[ "${{ github.event.inputs.action }}" == "update" ]]; then
+            # Build a dynamic commit message based on what was updated
+            COMMIT_MSG="Update"
+            if [[ -n "${{ github.event.inputs.replicaCount }}" ]]; then
+              COMMIT_MSG="$COMMIT_MSG replica count"
+            fi
+            if [[ -n "${{ github.event.inputs.chartVersion }}" ]]; then
+              if [[ "$COMMIT_MSG" != "Update" ]]; then
+                COMMIT_MSG="$COMMIT_MSG and"
+              fi
+              COMMIT_MSG="$COMMIT_MSG chart version"
+            fi
+            COMMIT_MSG="$COMMIT_MSG for $APP_NAME in ${{ github.event.inputs.namespace }} namespace"
+            
+            # Add specific values if provided
+            if [[ -n "${{ github.event.inputs.replicaCount }}" ]]; then
+              COMMIT_MSG="$COMMIT_MSG (replicas: ${{ github.event.inputs.replicaCount }}"
+              if [[ -n "${{ github.event.inputs.chartVersion }}" ]]; then
+                COMMIT_MSG="$COMMIT_MSG, chart: ${{ github.event.inputs.chartVersion }})"
+              else
+                COMMIT_MSG="$COMMIT_MSG)"
+              fi
+            elif [[ -n "${{ github.event.inputs.chartVersion }}" ]]; then
+              COMMIT_MSG="$COMMIT_MSG (chart: ${{ github.event.inputs.chartVersion }})"
+            fi
+          else
+            COMMIT_MSG="Update ArgoCD ApplicationSet to remove $APP_NAME from ${{ github.event.inputs.namespace }} namespace"
+          fi
+          
+          # Commit changes
+          git commit -m "$COMMIT_MSG"
+          
+          # Push the branch to the repository
+          git push --set-upstream origin $BRANCH_NAME
+          echo "Pushed branch $BRANCH_NAME to repository"
+          
+          # Store branch name and commit message for next steps
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "PR_TITLE=$COMMIT_MSG" >> $GITHUB_ENV
+
+      - name: Create Pull Request
+        id: create-pr
+        run: |
+          # Create a PR using GitHub CLI
+          PR_URL=$(gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "${{ env.PR_TITLE }}" --body "This PR was automatically created by the GitHub Actions workflow to update ArgoCD configuration.")
+          echo "Created PR: $PR_URL"
+          echo "PR_URL=$PR_URL" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Approve Pull Request
+        run: |
+          # Approve the PR using GitHub CLI
+          gh pr review ${{ env.PR_URL }} --approve --body "Automatically approving PR created by the GitHub Actions workflow."
+          echo "Approved PR: ${{ env.PR_URL }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Merge Pull Request
+        run: |
+          # Merge the PR using GitHub CLI
+          gh pr merge ${{ env.PR_URL }} --merge --delete-branch
+          echo "Merged PR and deleted branch ${{ env.BRANCH_NAME }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

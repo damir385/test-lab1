@@ -1,0 +1,73 @@
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Helm specific
+.helm/
+*.tgz
+charts/*/charts/
+charts/*/requirements.lock
+charts/*/Chart.lock
+
+# Kubernetes/ArgoCD specific
+kubeconfig
+*.kubeconfig
+.kube/
+.argocd/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+
+# Package managers
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build artifacts
+dist/
+build/
+target/
+bin/
+*.class
+*.jar
+*.war
+*.ear
+
+# Environment variables and secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+secrets/

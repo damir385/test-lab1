@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-deployments
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements: []
+        # Elements will be populated by the GitHub workflow
+        # Example element structure:
+        # - namespace: default
+        #   name: nginx-default  # Name is automatically generated as "nginx-{namespace}"
+        #   replicaCount: 1
+        #   chartVersion: nginx-0.1.0  # Chart version to use (nginx-0.1.0 or nginx-0.2.0)
+  template:
+    metadata:
+      name: "{{name}}"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/damir385/test-lab1.git
+        targetRevision: "HEAD"
+        path: charts/{{chartVersion}}
+        helm:
+          parameters:
+            - name: replicaCount
+              value: "{{replicaCount}}"
+      destination:
+        name: test
+        namespace: "{{namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
