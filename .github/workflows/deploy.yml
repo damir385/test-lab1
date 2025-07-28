@@ -123,18 +123,12 @@ jobs:
           echo "Updated ApplicationSet manifest for deletion:"
           cat manifests/argocd/nginx-applicationset.yaml
 
-      - name: Create branch, commit and push changes
+      # Prepare commit message for PR
+      - name: Set PR title
+        id: pr-title
         run: |
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
-          
-          # Create a new branch with timestamp and action type
-          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-          BRANCH_NAME="${{ github.event.inputs.action }}-$APP_NAME-$TIMESTAMP"
-          echo "Creating new branch: $BRANCH_NAME"
-          git checkout -b $BRANCH_NAME
-          
-          git add manifests/argocd/nginx-applicationset.yaml
           
           # Prepare commit message
           if [[ "${{ github.event.inputs.action }}" == "deploy" ]]; then
@@ -168,39 +162,27 @@ jobs:
             COMMIT_MSG="Update ArgoCD ApplicationSet to remove $APP_NAME from ${{ github.event.inputs.namespace }} namespace"
           fi
           
-          # Commit changes
-          git commit -m "$COMMIT_MSG"
-          
-          # Push the branch to the repository
-          git push --set-upstream origin $BRANCH_NAME
-          echo "Pushed branch $BRANCH_NAME to repository"
-          
-          # Store branch name and commit message for next steps
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          echo "PR_TITLE=$COMMIT_MSG" >> $GITHUB_ENV
+          echo "PR_TITLE=$COMMIT_MSG" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
-        id: create-pr
-        run: |
-          # Create a PR using GitHub CLI
-          PR_URL=$(gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "${{ env.PR_TITLE }}" --body "This PR was automatically created by the GitHub Actions workflow to update ArgoCD configuration.")
-          echo "Created PR: $PR_URL"
-          echo "PR_URL=$PR_URL" >> $GITHUB_ENV
+        id: pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.event.inputs.action }}-nginx-${{ github.event.inputs.namespace }}-${{ github.run_id }}
+          title: ${{ steps.pr-title.outputs.PR_TITLE }}
+          body: "This PR was automatically created by the GitHub Actions workflow to update ArgoCD configuration."
+          base: main
+          add-paths: |
+            manifests/argocd/nginx-applicationset.yaml
+
+      - name: Enable Pull Request Automerge
+        if: ${{ steps.pr.outputs.pull-request-number }}
+        uses: nick-fields/retry@v3
+        with:
+          timeout_seconds: 5
+          max_attempts: 3
+          retry_on: error
+          command: gh pr merge --squash --auto ${{ steps.pr.outputs.pull-request-number }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Approve Pull Request
-        run: |
-          # Approve the PR using GitHub CLI
-          gh pr review ${{ env.PR_URL }} --approve --body "Automatically approving PR created by the GitHub Actions workflow."
-          echo "Approved PR: ${{ env.PR_URL }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Merge Pull Request
-        run: |
-          # Merge the PR using GitHub CLI
-          gh pr merge ${{ env.PR_URL }} --merge --delete-branch
-          echo "Merged PR and deleted branch ${{ env.BRANCH_NAME }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

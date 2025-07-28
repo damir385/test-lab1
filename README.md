@@ -71,36 +71,33 @@ When deploying, the workflow:
 1. Checks if the deployment already exists in the ApplicationSet (using "nginx-{namespace}" as the identifier)
 2. If it doesn't exist, adds a new deployment with the automatically generated name, namespace, replica count, and chart version
 3. If it exists, updates the existing deployment with the new namespace, replica count, and chart version
-4. Creates a new branch with a name based on the action type, app name, and timestamp
-5. Commits the changes to that branch
-6. Pushes the branch to the repository
-7. Creates a pull request from the new branch to the main branch
-8. Automatically approves the pull request
-9. Automatically merges the pull request
-10. ArgoCD detects the changes in the main branch and applies them to the Kubernetes cluster
+4. Creates a pull request using the peter-evans/create-pull-request action, which:
+   - Automatically creates a new branch
+   - Commits the changes to that branch
+   - Creates a pull request from the new branch to the main branch
+5. Enables auto-merge for the pull request using the nick-fields/retry action
+6. ArgoCD detects the changes in the main branch and applies them to the Kubernetes cluster
 
 When deleting, the workflow:
 1. Removes the deployment from the ApplicationSet
-2. Creates a new branch with a name based on the action type, app name, and timestamp
-3. Commits the changes to that branch
-4. Pushes the branch to the repository
-5. Creates a pull request from the new branch to the main branch
-6. Automatically approves the pull request
-7. Automatically merges the pull request
-8. ArgoCD detects the changes in the main branch and removes the application from the cluster
+2. Creates a pull request using the peter-evans/create-pull-request action, which:
+   - Automatically creates a new branch
+   - Commits the changes to that branch
+   - Creates a pull request from the new branch to the main branch
+3. Enables auto-merge for the pull request using the nick-fields/retry action
+4. ArgoCD detects the changes in the main branch and removes the application from the cluster
 
 When updating, the workflow:
 1. Checks if the deployment exists in the ApplicationSet (using "nginx-{namespace}" as the identifier)
 2. If it exists, updates the replica count and/or chart version based on the provided inputs
 3. If it doesn't exist, shows an error message
-4. Creates a new branch with a name based on the action type, app name, and timestamp
-5. Commits the changes to that branch
-6. Pushes the branch to the repository
-7. Creates a pull request from the new branch to the main branch
-8. Automatically approves the pull request
-9. Automatically merges the pull request
-10. ArgoCD detects the changes in the main branch and applies the updates to the deployment
-11. If the chart version was updated, the new chart version is applied, which may include a different Nginx image version (1.21.6 for nginx-0.1.0, 1.22.0 for nginx-0.2.0)
+4. Creates a pull request using the peter-evans/create-pull-request action, which:
+   - Automatically creates a new branch
+   - Commits the changes to that branch
+   - Creates a pull request from the new branch to the main branch
+5. Enables auto-merge for the pull request using the nick-fields/retry action
+6. ArgoCD detects the changes in the main branch and applies the updates to the deployment
+7. If the chart version was updated, the new chart version is applied, which may include a different Nginx image version (1.21.6 for nginx-0.1.0, 1.22.0 for nginx-0.2.0)
 
 ### Workflow Inputs
 
@@ -147,7 +144,9 @@ The workflow is configured with these permissions by default, but if you're usin
    
    For the `update` action, you must specify at least one of `replicaCount` or `chartVersion`.
 5. Click "Run workflow" to start the update process
-6. ArgoCD will automatically detect the changes and apply them to the cluster
+6. The workflow will create a pull request with the changes
+7. The pull request will be automatically merged
+8. ArgoCD will automatically detect the changes and apply them to the cluster
 
 The application will be named "nginx-{namespace}" automatically, simplifying the deployment process and ensuring consistent naming across your cluster.
 
