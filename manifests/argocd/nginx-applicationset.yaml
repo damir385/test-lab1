@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: nginx-deployments
-  namespace: argocd
+  namespace: akuity
 spec:
   generators:
     - list:
@@ -29,7 +29,7 @@ spec:
         helm:
           parameters:
             - name: replicaCount
-              value: {{replicaCount}}
+              value: "{{replicaCount}}"
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
