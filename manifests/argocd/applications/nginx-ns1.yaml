@@ -1,21 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: "APP_NAME"
+  name: "nginx-ns1"
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/damir385/test-lab1.git
     targetRevision: "HEAD"
-    path: charts/CHART_VERSION
+    path: charts/nginx-0.1.0
     helm:
       parameters:
         - name: replicaCount
-          value: "REPLICA_COUNT"
+          value: "3"
   destination:
-    server: "DESTINATION_SERVER"
-    namespace: "NAMESPACE"
+    server: "http://cluster-test:8001"
+    namespace: "ns1"
   syncPolicy:
     automated:
       prune: true
