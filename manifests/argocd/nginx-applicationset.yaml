@@ -28,7 +28,7 @@ spec:
         helm:
           parameters:
             - name: replicaCount
-              value: {{replicaCount}}
+              value: "{{replicaCount}}"
       destination:
         server: "{{destinationServer}}"
         namespace: "{{namespace}}"
