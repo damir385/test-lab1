@@ -68,6 +68,7 @@ jobs:
           echo "namespace: ${{ github.event.inputs.namespace }}" >> "$CONFIG_FILE"
           echo "replicaCount: ${{ github.event.inputs.replicaCount }}" >> "$CONFIG_FILE"
           echo "chartVersion: ${{ github.event.inputs.chartVersion }}" >> "$CONFIG_FILE"
+          echo "destinationServer: https://kubernetes.default.svc" >> "$CONFIG_FILE"
           
           echo "Created/Updated configuration file:"
           cat "$CONFIG_FILE"
@@ -89,6 +90,7 @@ jobs:
             CURRENT_NAMESPACE=$(grep "^namespace:" "$CONFIG_FILE" | awk '{print $2}')
             CURRENT_REPLICAS=$(grep "^replicaCount:" "$CONFIG_FILE" | awk '{print $2}')
             CURRENT_CHART_VERSION=$(grep "^chartVersion:" "$CONFIG_FILE" | awk '{print $2}')
+            CURRENT_DESTINATION_SERVER=$(grep "^destinationServer:" "$CONFIG_FILE" | awk '{print $2}')
             
             # Track what's being updated
             UPDATES=""
@@ -118,6 +120,9 @@ jobs:
             else
               echo "chartVersion: $CURRENT_CHART_VERSION" >> "$CONFIG_FILE.new"
             fi
+            
+            # Add destinationServer parameter
+            echo "destinationServer: $CURRENT_DESTINATION_SERVER" >> "$CONFIG_FILE.new"
             
             # Check if any updates were provided
             if [[ -z "$UPDATES" ]]; then

@@ -2,3 +2,4 @@ name: nginx-ns1
 namespace: ns1
 replicaCount: 3
 chartVersion: nginx-0.1.0
+destinationServer: https://kubernetes.default.svc

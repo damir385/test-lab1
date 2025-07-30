@@ -65,6 +65,7 @@ Each configuration file specifies:
 - The namespace to deploy to
 - The number of replicas
 - The Helm chart version to use (nginx-0.1.0 or nginx-0.2.0)
+- The destination server URL for ArgoCD to use when deploying to Kubernetes
 
 The ApplicationSet watches these configuration files and automatically creates or updates applications based on their content.
 
@@ -172,9 +173,10 @@ name: nginx-ns1
 namespace: ns1
 replicaCount: 3
 chartVersion: nginx-0.1.0
+destinationServer: https://kubernetes.default.svc
 ```
 
-Each configuration file contains these four parameters, which are used by the ApplicationSet to generate the application.
+Each configuration file contains these five parameters, which are used by the ApplicationSet to generate the application.
 
 ## ArgoCD Integration
 
