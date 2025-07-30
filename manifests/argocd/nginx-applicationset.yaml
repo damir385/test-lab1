@@ -5,18 +5,17 @@ metadata:
   namespace: akuity
 spec:
   generators:
-    - list:
-        elements:
-          - name: nginx-ns1
-            namespace: ns1
-            replicaCount: 3
-            chartVersion: nginx-0.1.0
-        # Elements will be populated by the GitHub workflow
-        # Example element structure:
-        # - namespace: default
-        #   name: nginx-default  # Name is automatically generated as "nginx-{namespace}"
-        #   replicaCount: 1
-        #   chartVersion: nginx-0.1.0  # Chart version to use (nginx-0.1.0 or nginx-0.2.0)
+    - git:
+        repoURL: https://github.com/damir385/test-lab1.git
+        revision: HEAD
+        files:
+          - path: "config/nginx-deployments/*.yaml"
+        # Each file in config/nginx-deployments/ represents a deployment configuration
+        # Example file content (nginx-ns1.yaml):
+        # name: nginx-ns1
+        # namespace: ns1
+        # replicaCount: 3
+        # chartVersion: nginx-0.1.0
   template:
     metadata:
       name: "{{name}}"
@@ -29,7 +28,7 @@ spec:
         helm:
           parameters:
             - name: replicaCount
-              value: "{{replicaCount}}"
+              value: {{replicaCount}}
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"

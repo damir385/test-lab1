@@ -17,6 +17,9 @@ This repository contains a simple GitOps project for ArgoCD with a Nginx Helm ch
 │       ├── Chart.yaml    # Chart metadata
 │       ├── values.yaml   # Default values (Nginx 1.22.0)
 │       ├── templates/    # Kubernetes templates
+├── config/               # Configuration files
+│   └── nginx-deployments/# Deployment configurations for ApplicationSet
+│       └── nginx-ns1.yaml# Example deployment configuration
 ├── manifests/            # Kubernetes manifests
 │   └── argocd/           # ArgoCD application manifests
 │       └── nginx-applicationset.yaml  # ApplicationSet for managing multiple deployments
@@ -55,48 +58,53 @@ The configuration in `nginx-0.2.0/values.yaml` includes:
 - Resource limits and requests
 - Disabled autoscaling
 
-The ApplicationSet allows deploying the Nginx chart to multiple namespaces with different configurations. Each deployment in the ApplicationSet can specify:
-- The namespace to deploy to (the application name is automatically generated as "nginx-{namespace}")
+The project uses the Git Generator with Files approach in ArgoCD ApplicationSet to deploy the Nginx chart to multiple namespaces with different configurations. Each deployment is defined in a separate YAML file in the `config/nginx-deployments` directory, with the filename matching the application name (e.g., `nginx-ns1.yaml`).
+
+Each configuration file specifies:
+- The name of the application (automatically generated as "nginx-{namespace}")
+- The namespace to deploy to
 - The number of replicas
 - The Helm chart version to use (nginx-0.1.0 or nginx-0.2.0)
+
+The ApplicationSet watches these configuration files and automatically creates or updates applications based on their content.
 
 ## GitHub Workflow
 
 The repository includes a GitHub workflow (`deploy.yml`) that follows GitOps principles:
-1. Update ArgoCD ApplicationSet to add or update a deployment to a specified namespace
-2. Update ArgoCD ApplicationSet to remove a deployment from a specified namespace
-3. Update replica count and/or chart version for an existing deployment without changing other parameters
+1. Create or update configuration files for deployments in the `config/nginx-deployments` directory
+2. Delete configuration files to remove deployments
+3. Update configuration files to modify replica count and/or chart version for existing deployments
 
 When deploying, the workflow:
-1. Checks if the deployment already exists in the ApplicationSet (using "nginx-{namespace}" as the identifier)
-2. If it doesn't exist, adds a new deployment with the automatically generated name, namespace, replica count, and chart version
-3. If it exists, updates the existing deployment with the new namespace, replica count, and chart version
+1. Checks if a configuration file already exists for the deployment (using "nginx-{namespace}" as the identifier)
+2. If it doesn't exist, creates a new configuration file with the automatically generated name, namespace, replica count, and chart version
+3. If it exists, updates the existing configuration file with the new values
 4. Creates a pull request using the peter-evans/create-pull-request action, which:
    - Automatically creates a new branch
    - Commits the changes to that branch
    - Creates a pull request from the new branch to the main branch
 5. Enables auto-merge for the pull request using the nick-fields/retry action
-6. ArgoCD detects the changes in the main branch and applies them to the Kubernetes cluster
+6. ArgoCD detects the changes in the main branch, processes the updated configuration files, and applies the changes to the Kubernetes cluster
 
 When deleting, the workflow:
-1. Removes the deployment from the ApplicationSet
+1. Deletes the configuration file for the specified deployment
 2. Creates a pull request using the peter-evans/create-pull-request action, which:
    - Automatically creates a new branch
    - Commits the changes to that branch
    - Creates a pull request from the new branch to the main branch
 3. Enables auto-merge for the pull request using the nick-fields/retry action
-4. ArgoCD detects the changes in the main branch and removes the application from the cluster
+4. ArgoCD detects the changes in the main branch, notices the missing configuration file, and removes the application from the cluster
 
 When updating, the workflow:
-1. Checks if the deployment exists in the ApplicationSet (using "nginx-{namespace}" as the identifier)
-2. If it exists, updates the replica count and/or chart version based on the provided inputs
+1. Checks if a configuration file exists for the deployment (using "nginx-{namespace}" as the identifier)
+2. If it exists, reads the current values and updates the replica count and/or chart version based on the provided inputs
 3. If it doesn't exist, shows an error message
 4. Creates a pull request using the peter-evans/create-pull-request action, which:
    - Automatically creates a new branch
    - Commits the changes to that branch
    - Creates a pull request from the new branch to the main branch
 5. Enables auto-merge for the pull request using the nick-fields/retry action
-6. ArgoCD detects the changes in the main branch and applies the updates to the deployment
+6. ArgoCD detects the changes in the main branch, processes the updated configuration file, and applies the updates to the deployment
 7. If the chart version was updated, the new chart version is applied, which may include a different Nginx image version (1.21.6 for nginx-0.1.0, 1.22.0 for nginx-0.2.0)
 
 ### Workflow Inputs
@@ -133,9 +141,9 @@ The workflow is configured with these permissions by default, but if you're usin
 3. Click "Run workflow"
 4. Fill in the required inputs:
    - **action**: Choose one of the following:
-     - `deploy`: To add a new deployment or update an existing one
-     - `delete`: To remove a deployment
-     - `update`: To update replica count and/or chart version for an existing deployment
+     - `deploy`: To create a new configuration file or update an existing one
+     - `delete`: To remove a configuration file
+     - `update`: To update replica count and/or chart version in an existing configuration file
    - **namespace**: Specify the Kubernetes namespace to deploy to
    - **replicaCount**: Specify the number of replicas (required for `deploy` action, optional for `update` action)
    - **chartVersion**: Select the Helm chart version to use (required for `deploy` action, optional for `update` action):
@@ -144,11 +152,29 @@ The workflow is configured with these permissions by default, but if you're usin
    
    For the `update` action, you must specify at least one of `replicaCount` or `chartVersion`.
 5. Click "Run workflow" to start the update process
-6. The workflow will create a pull request with the changes
-7. The pull request will be automatically merged
-8. ArgoCD will automatically detect the changes and apply them to the cluster
+6. The workflow will:
+   - Create, update, or delete a configuration file in the `config/nginx-deployments` directory
+   - Create a pull request with the changes
+   - Automatically merge the pull request
+7. After the pull request is merged, ArgoCD will:
+   - Detect the changes in the repository
+   - Process the updated configuration files
+   - Apply the changes to the cluster
 
-The application will be named "nginx-{namespace}" automatically, simplifying the deployment process and ensuring consistent naming across your cluster.
+The application will be named "nginx-{namespace}" automatically, and the configuration file will be named accordingly (e.g., `nginx-ns1.yaml`). This simplifies the deployment process and ensures consistent naming across your cluster.
+
+#### Example Configuration File
+
+Here's an example of what a configuration file looks like:
+
+```yaml
+name: nginx-ns1
+namespace: ns1
+replicaCount: 3
+chartVersion: nginx-0.1.0
+```
+
+Each configuration file contains these four parameters, which are used by the ApplicationSet to generate the application.
 
 ## ArgoCD Integration
 
@@ -156,13 +182,16 @@ This repository is designed to work with ArgoCD following GitOps principles. The
 
 ### ArgoCD ApplicationSet
 
-The repository uses an ApplicationSet (`nginx-applicationset.yaml`) to manage multiple deployments of the Nginx Helm chart. The ApplicationSet:
-- Uses a list generator to create multiple applications from a list of deployments
-- Allows deploying different chart versions to different namespaces
-- Overrides the replica count for each deployment
+The repository uses an ApplicationSet (`nginx-applicationset.yaml`) with the Git Generator with Files approach to manage multiple deployments of the Nginx Helm chart. The ApplicationSet:
+- Uses a Git Generator with Files to scan the `config/nginx-deployments` directory for YAML files
+- Treats each YAML file as a deployment configuration
+- Creates an application for each configuration file found
+- Extracts parameters like name, namespace, replicaCount, and chartVersion from each file
 - Selects the appropriate chart directory based on the specified chart version (nginx-0.1.0 or nginx-0.2.0)
 - Uses the default image version that comes with each chart version (1.21.6 for nginx-0.1.0, 1.22.0 for nginx-0.2.0)
 - Maintains consistent sync policies across all deployments
+
+This approach treats the ApplicationSet as immutable, with all mutations happening in the configuration files rather than in the ApplicationSet itself. This provides better separation of concerns, easier tracking of changes, and more flexibility in managing deployments.
 
 ### Chart Version vs. Image Version
 
@@ -208,11 +237,19 @@ To use this repository with ArgoCD:
 
 The GitOps workflow with ArgoCD works as follows:
 
-1. The GitHub workflow updates the ApplicationSet manifest to add, update, or remove deployments
-2. Changes are committed and pushed to the repository
-3. ArgoCD detects the changes in the repository
-4. ArgoCD creates, updates, or deletes the applications based on the ApplicationSet
-5. ArgoCD continuously monitors the cluster to ensure the desired state matches the actual state
+1. The GitHub workflow creates, updates, or deletes configuration files in the `config/nginx-deployments` directory
+2. Changes are committed and pushed to the repository through a pull request
+3. After the pull request is merged, ArgoCD detects the changes in the repository
+4. ArgoCD scans the `config/nginx-deployments` directory and processes the configuration files
+5. ArgoCD creates, updates, or deletes applications based on the configuration files
+6. ArgoCD continuously monitors the cluster to ensure the desired state matches the actual state
+
+This approach follows the GitOps principle of treating the ApplicationSet as immutable, with all mutations happening in the configuration files. This provides several benefits:
+
+1. **Better Separation of Concerns**: The ApplicationSet defines how to process configuration files, while the configuration files define what to deploy
+2. **Easier Tracking of Changes**: Each deployment has its own configuration file, making it easier to track changes to specific deployments
+3. **More Flexibility**: Configuration files can be added, updated, or removed without modifying the ApplicationSet itself
+4. **Improved Scalability**: The approach scales well to many deployments without making the ApplicationSet unwieldy
 
 ## License
 

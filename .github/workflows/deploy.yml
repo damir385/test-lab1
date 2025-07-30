@@ -46,82 +46,109 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Add or update deployment in ApplicationSet
+      - name: Add or update deployment configuration
         if: ${{ github.event.inputs.action == 'deploy' }}
         run: |
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
           
-          # Check if the deployment already exists in the ApplicationSet
-          DEPLOYMENT_EXISTS=$(yq e '.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'")' manifests/argocd/nginx-applicationset.yaml)
+          # Ensure the directory exists
+          mkdir -p config/nginx-deployments
           
-          if [ -z "$DEPLOYMENT_EXISTS" ]; then
-            # Add new deployment to the ApplicationSet
-            yq -i '.spec.generators[0].list.elements += [{"name": "'"$APP_NAME"'", "namespace": "${{ github.event.inputs.namespace }}", "replicaCount": "${{ github.event.inputs.replicaCount }}", "chartVersion": "${{ github.event.inputs.chartVersion }}"}]' manifests/argocd/nginx-applicationset.yaml
-            echo "Added new deployment to ApplicationSet"
+          # Check if the configuration file already exists
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "Updating existing deployment configuration: $CONFIG_FILE"
           else
-            # Update existing deployment in the ApplicationSet
-            yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").namespace = "${{ github.event.inputs.namespace }}" | select(.name == "'"$APP_NAME"'").replicaCount = "${{ github.event.inputs.replicaCount }}" | select(.name == "'"$APP_NAME"'").chartVersion = "${{ github.event.inputs.chartVersion }}"' manifests/argocd/nginx-applicationset.yaml
-            echo "Updated existing deployment in ApplicationSet"
+            echo "Creating new deployment configuration: $CONFIG_FILE"
           fi
           
-          echo "Updated ApplicationSet manifest:"
-          cat manifests/argocd/nginx-applicationset.yaml
+          # Create or update the configuration file
+          echo "name: $APP_NAME" > "$CONFIG_FILE"
+          echo "namespace: ${{ github.event.inputs.namespace }}" >> "$CONFIG_FILE"
+          echo "replicaCount: ${{ github.event.inputs.replicaCount }}" >> "$CONFIG_FILE"
+          echo "chartVersion: ${{ github.event.inputs.chartVersion }}" >> "$CONFIG_FILE"
+          
+          echo "Created/Updated configuration file:"
+          cat "$CONFIG_FILE"
 
-      - name: Update deployment in ApplicationSet
+      - name: Update deployment configuration
         if: ${{ github.event.inputs.action == 'update' }}
         run: |
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
           
-          # Check if the deployment exists in the ApplicationSet
-          DEPLOYMENT_EXISTS=$(yq e '.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'")' manifests/argocd/nginx-applicationset.yaml)
-          
-          if [ -z "$DEPLOYMENT_EXISTS" ]; then
-            echo "Error: Deployment $APP_NAME does not exist in the ApplicationSet"
+          # Check if the configuration file exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Error: Configuration file for $APP_NAME does not exist: $CONFIG_FILE"
             exit 1
           else
-            # Update both replica count and chart version for the existing deployment
+            # Read current values from the configuration file
+            CURRENT_NAME=$(grep "^name:" "$CONFIG_FILE" | awk '{print $2}')
+            CURRENT_NAMESPACE=$(grep "^namespace:" "$CONFIG_FILE" | awk '{print $2}')
+            CURRENT_REPLICAS=$(grep "^replicaCount:" "$CONFIG_FILE" | awk '{print $2}')
+            CURRENT_CHART_VERSION=$(grep "^chartVersion:" "$CONFIG_FILE" | awk '{print $2}')
+            
+            # Track what's being updated
             UPDATES=""
+            
+            # Prepare the updated configuration
+            echo "name: $CURRENT_NAME" > "$CONFIG_FILE.new"
+            echo "namespace: $CURRENT_NAMESPACE" >> "$CONFIG_FILE.new"
             
             # Only update replicaCount if it's provided
             if [[ -n "${{ github.event.inputs.replicaCount }}" ]]; then
-              yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").replicaCount = "${{ github.event.inputs.replicaCount }}"' manifests/argocd/nginx-applicationset.yaml
+              echo "replicaCount: ${{ github.event.inputs.replicaCount }}" >> "$CONFIG_FILE.new"
               echo "Updated replica count for $APP_NAME to ${{ github.event.inputs.replicaCount }}"
               UPDATES="replica count"
+            else
+              echo "replicaCount: $CURRENT_REPLICAS" >> "$CONFIG_FILE.new"
             fi
             
             # Only update chartVersion if it's provided
             if [[ -n "${{ github.event.inputs.chartVersion }}" ]]; then
-              yq -i '.spec.generators[0].list.elements[] |= select(.name == "'"$APP_NAME"'").chartVersion = "${{ github.event.inputs.chartVersion }}"' manifests/argocd/nginx-applicationset.yaml
+              echo "chartVersion: ${{ github.event.inputs.chartVersion }}" >> "$CONFIG_FILE.new"
               echo "Updated chart version for $APP_NAME to ${{ github.event.inputs.chartVersion }}"
               if [[ -n "$UPDATES" ]]; then
                 UPDATES="$UPDATES and chart version"
               else
                 UPDATES="chart version"
               fi
+            else
+              echo "chartVersion: $CURRENT_CHART_VERSION" >> "$CONFIG_FILE.new"
             fi
             
+            # Check if any updates were provided
             if [[ -z "$UPDATES" ]]; then
               echo "No updates were provided. Please specify at least replicaCount or chartVersion."
+              rm "$CONFIG_FILE.new"
               exit 1
             fi
+            
+            # Replace the old file with the new one
+            mv "$CONFIG_FILE.new" "$CONFIG_FILE"
           fi
           
-          echo "Updated ApplicationSet manifest:"
-          cat manifests/argocd/nginx-applicationset.yaml
+          echo "Updated configuration file:"
+          cat "$CONFIG_FILE"
 
-      - name: Remove deployment from ApplicationSet
+      - name: Remove deployment configuration
         if: ${{ github.event.inputs.action == 'delete' }}
         run: |
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
+          CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
           
-          # Remove the deployment from the ApplicationSet
-          yq -i 'del(.spec.generators[0].list.elements[] | select(.name == "'"$APP_NAME"'"))' manifests/argocd/nginx-applicationset.yaml
-          
-          echo "Updated ApplicationSet manifest for deletion:"
-          cat manifests/argocd/nginx-applicationset.yaml
+          # Check if the configuration file exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Warning: Configuration file for $APP_NAME does not exist: $CONFIG_FILE"
+            echo "Nothing to delete."
+          else
+            echo "Deleting configuration file: $CONFIG_FILE"
+            rm "$CONFIG_FILE"
+            echo "Configuration file deleted successfully."
+          fi
 
       # Prepare commit message for PR
       - name: Set PR title
@@ -132,7 +159,7 @@ jobs:
           
           # Prepare commit message
           if [[ "${{ github.event.inputs.action }}" == "deploy" ]]; then
-            COMMIT_MSG="Update ArgoCD ApplicationSet to deploy $APP_NAME to ${{ github.event.inputs.namespace }} namespace with ${{ github.event.inputs.replicaCount }} replicas using chart version ${{ github.event.inputs.chartVersion }}"
+            COMMIT_MSG="Add or update configuration for $APP_NAME in ${{ github.event.inputs.namespace }} namespace with ${{ github.event.inputs.replicaCount }} replicas using chart version ${{ github.event.inputs.chartVersion }}"
           elif [[ "${{ github.event.inputs.action }}" == "update" ]]; then
             # Build a dynamic commit message based on what was updated
             COMMIT_MSG="Update"
@@ -159,7 +186,7 @@ jobs:
               COMMIT_MSG="$COMMIT_MSG (chart: ${{ github.event.inputs.chartVersion }})"
             fi
           else
-            COMMIT_MSG="Update ArgoCD ApplicationSet to remove $APP_NAME from ${{ github.event.inputs.namespace }} namespace"
+            COMMIT_MSG="Remove configuration for $APP_NAME from ${{ github.event.inputs.namespace }} namespace"
           fi
           
           echo "PR_TITLE=$COMMIT_MSG" >> $GITHUB_OUTPUT
@@ -174,7 +201,7 @@ jobs:
           body: "This PR was automatically created by the GitHub Actions workflow to update ArgoCD configuration."
           base: main
           add-paths: |
-            manifests/argocd/nginx-applicationset.yaml
+            config/nginx-deployments/
 
       - name: Enable Pull Request Automerge
         if: ${{ steps.pr.outputs.pull-request-number }}
