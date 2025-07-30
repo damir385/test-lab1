@@ -52,9 +52,11 @@ jobs:
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
           CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
+          APP_MANIFEST="manifests/argocd/applications/$APP_NAME.yaml"
           
-          # Ensure the directory exists
+          # Ensure the directories exist
           mkdir -p config/nginx-deployments
+          mkdir -p manifests/argocd/applications
           
           # Check if the configuration file already exists
           if [ -f "$CONFIG_FILE" ]; then
@@ -72,6 +74,17 @@ jobs:
           
           echo "Created/Updated configuration file:"
           cat "$CONFIG_FILE"
+          
+          # Generate Application manifest from template
+          cp manifests/argocd/application-template.yaml "$APP_MANIFEST"
+          sed -i "s/APP_NAME/$APP_NAME/g" "$APP_MANIFEST"
+          sed -i "s/NAMESPACE/${{ github.event.inputs.namespace }}/g" "$APP_MANIFEST"
+          sed -i "s/REPLICA_COUNT/${{ github.event.inputs.replicaCount }}/g" "$APP_MANIFEST"
+          sed -i "s/CHART_VERSION/${{ github.event.inputs.chartVersion }}/g" "$APP_MANIFEST"
+          sed -i "s|DESTINATION_SERVER|https://kubernetes.default.svc|g" "$APP_MANIFEST"
+          
+          echo "Created/Updated Application manifest:"
+          cat "$APP_MANIFEST"
 
       - name: Update deployment configuration
         if: ${{ github.event.inputs.action == 'update' }}
@@ -79,6 +92,10 @@ jobs:
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
           CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
+          APP_MANIFEST="manifests/argocd/applications/$APP_NAME.yaml"
+          
+          # Ensure the applications directory exists
+          mkdir -p manifests/argocd/applications
           
           # Check if the configuration file exists
           if [ ! -f "$CONFIG_FILE" ]; then
@@ -94,6 +111,8 @@ jobs:
             
             # Track what's being updated
             UPDATES=""
+            NEW_REPLICAS=$CURRENT_REPLICAS
+            NEW_CHART_VERSION=$CURRENT_CHART_VERSION
             
             # Prepare the updated configuration
             echo "name: $CURRENT_NAME" > "$CONFIG_FILE.new"
@@ -104,6 +123,7 @@ jobs:
               echo "replicaCount: ${{ github.event.inputs.replicaCount }}" >> "$CONFIG_FILE.new"
               echo "Updated replica count for $APP_NAME to ${{ github.event.inputs.replicaCount }}"
               UPDATES="replica count"
+              NEW_REPLICAS="${{ github.event.inputs.replicaCount }}"
             else
               echo "replicaCount: $CURRENT_REPLICAS" >> "$CONFIG_FILE.new"
             fi
@@ -117,6 +137,7 @@ jobs:
               else
                 UPDATES="chart version"
               fi
+              NEW_CHART_VERSION="${{ github.event.inputs.chartVersion }}"
             else
               echo "chartVersion: $CURRENT_CHART_VERSION" >> "$CONFIG_FILE.new"
             fi
@@ -133,10 +154,34 @@ jobs:
             
             # Replace the old file with the new one
             mv "$CONFIG_FILE.new" "$CONFIG_FILE"
+            
+            # Update the Application manifest
+            if [ -f "$APP_MANIFEST" ]; then
+              echo "Updating Application manifest: $APP_MANIFEST"
+              # Generate updated Application manifest from template
+              cp manifests/argocd/application-template.yaml "$APP_MANIFEST"
+              sed -i "s/APP_NAME/$APP_NAME/g" "$APP_MANIFEST"
+              sed -i "s/NAMESPACE/$CURRENT_NAMESPACE/g" "$APP_MANIFEST"
+              sed -i "s/REPLICA_COUNT/$NEW_REPLICAS/g" "$APP_MANIFEST"
+              sed -i "s/CHART_VERSION/$NEW_CHART_VERSION/g" "$APP_MANIFEST"
+              sed -i "s|DESTINATION_SERVER|$CURRENT_DESTINATION_SERVER|g" "$APP_MANIFEST"
+            else
+              echo "Creating new Application manifest: $APP_MANIFEST"
+              # Generate new Application manifest from template
+              cp manifests/argocd/application-template.yaml "$APP_MANIFEST"
+              sed -i "s/APP_NAME/$APP_NAME/g" "$APP_MANIFEST"
+              sed -i "s/NAMESPACE/$CURRENT_NAMESPACE/g" "$APP_MANIFEST"
+              sed -i "s/REPLICA_COUNT/$NEW_REPLICAS/g" "$APP_MANIFEST"
+              sed -i "s/CHART_VERSION/$NEW_CHART_VERSION/g" "$APP_MANIFEST"
+              sed -i "s|DESTINATION_SERVER|$CURRENT_DESTINATION_SERVER|g" "$APP_MANIFEST"
+            fi
           fi
           
           echo "Updated configuration file:"
           cat "$CONFIG_FILE"
+          
+          echo "Updated Application manifest:"
+          cat "$APP_MANIFEST"
 
       - name: Remove deployment configuration
         if: ${{ github.event.inputs.action == 'delete' }}
@@ -144,6 +189,7 @@ jobs:
           # Use the chart name (nginx) with namespace as the identifier
           APP_NAME="nginx-${{ github.event.inputs.namespace }}"
           CONFIG_FILE="config/nginx-deployments/$APP_NAME.yaml"
+          APP_MANIFEST="manifests/argocd/applications/$APP_NAME.yaml"
           
           # Check if the configuration file exists
           if [ ! -f "$CONFIG_FILE" ]; then
@@ -153,6 +199,16 @@ jobs:
             echo "Deleting configuration file: $CONFIG_FILE"
             rm "$CONFIG_FILE"
             echo "Configuration file deleted successfully."
+          fi
+          
+          # Check if the Application manifest exists
+          if [ ! -f "$APP_MANIFEST" ]; then
+            echo "Warning: Application manifest for $APP_NAME does not exist: $APP_MANIFEST"
+            echo "Nothing to delete."
+          else
+            echo "Deleting Application manifest: $APP_MANIFEST"
+            rm "$APP_MANIFEST"
+            echo "Application manifest deleted successfully."
           fi
 
       # Prepare commit message for PR
@@ -207,6 +263,7 @@ jobs:
           base: main
           add-paths: |
             config/nginx-deployments/
+            manifests/argocd/applications/
 
       - name: Enable Pull Request Automerge
         if: ${{ steps.pr.outputs.pull-request-number }}
