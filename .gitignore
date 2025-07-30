@@ -71,3 +71,4 @@ bin/
 *.keystore
 *.truststore
 secrets/
+/backup/

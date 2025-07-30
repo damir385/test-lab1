@@ -2,11 +2,11 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: nginx-deployments
-  namespace: akuity
+  namespace: argocd
 spec:
   generators:
     - git:
-        repoURL: https://github.com/damir385/test-lab1.git
+        repoURL: https://github.com/your-username/test-lab1.git
         revision: HEAD
         files:
           - path: "config/nginx-deployments/*.yaml"
@@ -22,7 +22,7 @@ spec:
     spec:
       project: default
       source:
-        repoURL: https://github.com/damir385/test-lab1.git
+        repoURL: https://github.com/your-username/test-lab1.git
         targetRevision: "HEAD"
         path: charts/{{chartVersion}}
         helm:
